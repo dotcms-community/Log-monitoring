@@ -1,0 +1,52 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.dotcms</groupId>
+    <artifactId>plugin-log-monitoring</artifactId>
+    <version>1.0.0</version>
+    <packaging>bundle</packaging>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>dotcms-repo</id>
+            <url>https://artifactory.dotcms.cloud/artifactory/libs-release</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.dotcms</groupId>
+            <artifactId>dotcms-core</artifactId>
+            <version>26.04.11-01</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <version>5.1.9</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <instructions>
+                        <Bundle-Vendor>dotCMS</Bundle-Vendor>
+                        <Bundle-Description>dotCMS - Log Monitoring Plugin</Bundle-Description>
+                        <Bundle-DocURL>https://www.dotcms.com/</Bundle-DocURL>
+                        <Bundle-Activator>com.dotcms.logmonitoring.Activator</Bundle-Activator>
+                        <Import-Package>*</Import-Package>
+                    </instructions>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

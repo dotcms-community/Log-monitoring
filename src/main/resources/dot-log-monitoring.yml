@@ -1,0 +1,27 @@
+---
+name: "Log Monitoring"
+description: "Ships dotCMS log events to a Grafana Loki instance for storage, search, and alerting. Configure your Loki endpoint and credentials below."
+iconUrl: "https://static.dotcms.com/assets/icons/apps/dotcms-logo.png"
+allowExtraParameters: false
+params:
+  lokiUrl:
+    label: "Loki Push URL"
+    value: ""
+    hidden: false
+    type: "STRING"
+    hint: "Full Loki push endpoint. For Grafana Cloud use: https://logs-prod-{region}.grafana.net/loki/api/v1/push"
+    required: true
+  lokiUsername:
+    label: "Loki Username / Grafana Cloud Org ID"
+    value: ""
+    hidden: false
+    type: "STRING"
+    hint: "For Grafana Cloud this is your numeric Org ID. For self-hosted Loki with no auth, leave blank."
+    required: false
+  lokiPassword:
+    label: "Loki API Key / Password"
+    value: ""
+    hidden: true
+    type: "STRING"
+    hint: "For Grafana Cloud this is your API key. Stored encrypted. Leave blank for unauthenticated Loki."
+    required: false

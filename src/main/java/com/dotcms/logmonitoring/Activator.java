@@ -37,8 +37,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class Activator extends GenericBundleActivator {
 
-    private static final int DEFAULT_INTERVAL_MINUTES = 10;
-
     private final SiteContextInterceptor        siteInterceptor    = new SiteContextInterceptor();
     private final SiteContextCleanupInterceptor cleanupInterceptor = new SiteContextCleanupInterceptor();
     private final ContentEventListener          contentListener    = new ContentEventListener();
@@ -127,15 +125,29 @@ public class Activator extends GenericBundleActivator {
             throw e;
         }
 
-        // 5. Schedule Loki shipper via ScheduledExecutorService (avoids Quartz classloader issues)
-        final int intervalMinutes = Config.getIntProperty("LOG_MONITOR_INTERVAL_MINUTES", DEFAULT_INTERVAL_MINUTES);
+        // 5. Schedule Loki shipper via ScheduledExecutorService (avoids Quartz classloader issues).
+        // Self-rescheduling: after each run the next delay is read from App config so the interval
+        // can be changed in System → Apps without redeploying the plugin.
         scheduler = Executors.newSingleThreadScheduledExecutor(
                 r -> new Thread(r, "loki-shipper"));
-        scheduler.scheduleAtFixedRate(new LokiShipperJob(), 0, intervalMinutes, TimeUnit.MINUTES);
+        scheduler.schedule(this::runAndReschedule, 0, TimeUnit.MINUTES);
         Logger.info(Activator.class,
-                "Log Monitoring Plugin: LokiShipperJob scheduled — interval: " + intervalMinutes + " minutes.");
+                "Log Monitoring Plugin: LokiShipperJob scheduled (interval configured in System → Apps).");
 
         Logger.info(Activator.class, "Log Monitoring Plugin: started successfully.");
+    }
+
+    private void runAndReschedule() {
+        try {
+            new LokiShipperJob().run();
+        } finally {
+            if (!scheduler.isShutdown()) {
+                final int next = LokiShipperJob.readIntervalMinutes();
+                scheduler.schedule(this::runAndReschedule, next, TimeUnit.MINUTES);
+                Logger.debug(Activator.class,
+                        "Log Monitoring Plugin: next Loki push scheduled in " + next + " minute(s).");
+            }
+        }
     }
 
     @Override

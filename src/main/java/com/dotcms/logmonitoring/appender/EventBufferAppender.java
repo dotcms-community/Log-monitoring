@@ -33,9 +33,21 @@ public class EventBufferAppender extends AbstractAppender {
         return new EventBufferAppender(APPENDER_NAME, null, null);
     }
 
+    // Noisy background jobs that fire frequently but carry no per-site signal.
+    // Their INFO output is suppressed; WARN/ERROR still gets through.
+    private static final java.util.Set<String> SUPPRESS_INFO_LOGGERS = java.util.Set.of(
+            "com.dotcms.publisher.business.PublisherQueueJob"
+    );
+
     @Override
     public void append(final org.apache.logging.log4j.core.LogEvent log4jEvent) {
         try {
+            final String loggerName = log4jEvent.getLoggerName();
+            if (SUPPRESS_INFO_LOGGERS.contains(loggerName)
+                    && log4jEvent.getLevel().isLessSpecificThan(org.apache.logging.log4j.Level.WARN)) {
+                return;
+            }
+
             final String site = log4jEvent.getContextData()
                     .getValue(SiteContextInterceptor.MDC_SITE);
             final String user = log4jEvent.getContextData()

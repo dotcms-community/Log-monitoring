@@ -25,3 +25,10 @@ params:
     type: "STRING"
     hint: "For Grafana Cloud this is your API key. Stored encrypted. Leave blank for unauthenticated Loki."
     required: false
+  intervalMinutes:
+    label: "Shipping Interval (minutes)"
+    value: "10"
+    hidden: false
+    type: "STRING"
+    hint: "How often to ship log events to Loki. Minimum: 1. Changes take effect after the current cycle completes."
+    required: false

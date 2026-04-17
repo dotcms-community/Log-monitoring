@@ -41,7 +41,9 @@ import java.util.stream.Collectors;
  */
 public class LokiShipperJob implements Runnable {
 
-    public static final String APP_KEY = "dot-log-monitoring";
+    public static final String APP_KEY              = "dot-log-monitoring";
+    public static final int    DEFAULT_INTERVAL_MIN = 10;
+    public static final int    MIN_INTERVAL_MIN     = 1;
 
     @Override
     public void run() {
@@ -184,6 +186,36 @@ public class LokiShipperJob implements Runnable {
             if (conn != null) {
                 conn.disconnect();
             }
+        }
+    }
+
+    /**
+     * Reads the configured shipping interval from the App secrets.
+     * Called by the scheduler after each run to determine when to fire next.
+     * Falls back to DEFAULT_INTERVAL_MIN if the App is not configured or the
+     * field is blank; enforces a floor of MIN_INTERVAL_MIN.
+     */
+    public static int readIntervalMinutes() {
+        try {
+            final Optional<AppSecrets> secrets = APILocator.getAppsAPI()
+                    .getSecrets(APP_KEY, true, APILocator.systemHost(), APILocator.systemUser());
+            if (!secrets.isPresent()) {
+                return DEFAULT_INTERVAL_MIN;
+            }
+            final var secretMap = secrets.get().getSecrets();
+            if (!secretMap.containsKey("intervalMinutes")) {
+                return DEFAULT_INTERVAL_MIN;
+            }
+            final String raw = secretMap.get("intervalMinutes").getString();
+            if (raw == null || raw.trim().isEmpty()) {
+                return DEFAULT_INTERVAL_MIN;
+            }
+            return Math.max(MIN_INTERVAL_MIN, Integer.parseInt(raw.trim()));
+        } catch (final Exception e) {
+            Logger.warn(LokiShipperJob.class,
+                    "LokiShipperJob: could not read intervalMinutes — using default " +
+                    DEFAULT_INTERVAL_MIN + " min. Reason: " + e.getMessage());
+            return DEFAULT_INTERVAL_MIN;
         }
     }
 

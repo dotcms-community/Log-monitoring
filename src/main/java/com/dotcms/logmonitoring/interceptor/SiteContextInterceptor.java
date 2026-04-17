@@ -5,11 +5,11 @@ import com.dotcms.filters.interceptor.WebInterceptor;
 import com.dotmarketing.beans.Host;
 import com.dotmarketing.business.web.WebAPILocator;
 import com.dotmarketing.util.Logger;
-import io.vavr.control.Try;
 import org.apache.logging.log4j.ThreadContext;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 /**
  * Injects site context into Log4j2's ThreadContext (MDC) at the start of every
@@ -49,17 +49,23 @@ public class SiteContextInterceptor implements WebInterceptor {
                     : "default";
 
             ThreadContext.put(MDC_SITE, siteName);
-
-            // Capture the logged-in user from the session if present
-            final String sessionUser = Try.of(() ->
-                    (String) request.getSession(false).getAttribute("USER_ID"))
-                    .getOrElse("anonymous");
-            ThreadContext.put(MDC_USER, sessionUser);
-
         } catch (final Exception e) {
             Logger.debug(SiteContextInterceptor.class,
-                    "SiteContextInterceptor: could not resolve site context — " + e.getMessage());
+                    "SiteContextInterceptor: could not resolve site — " + e.getMessage());
             ThreadContext.put(MDC_SITE, "unknown");
+        }
+
+        try {
+            String sessionUser = "anonymous";
+            final HttpSession session = request.getSession(false);
+            if (session != null) {
+                final Object userId = session.getAttribute("USER_ID");
+                if (userId != null) {
+                    sessionUser = userId.toString();
+                }
+            }
+            ThreadContext.put(MDC_USER, sessionUser);
+        } catch (final Exception e) {
             ThreadContext.put(MDC_USER, "unknown");
         }
 

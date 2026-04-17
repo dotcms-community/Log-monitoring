@@ -5,18 +5,15 @@ import com.dotcms.logmonitoring.model.LogEvent;
 import com.dotcms.security.apps.AppSecrets;
 import com.dotmarketing.business.APILocator;
 import com.dotmarketing.util.Logger;
-import io.vavr.control.Try;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.StatefulJob;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -199,23 +196,31 @@ public class LokiShipperJob implements StatefulJob {
     }
 
     private Map<String, String> loadAppConfig() {
-        return Try.of(() -> {
+        try {
             final Optional<AppSecrets> secrets = APILocator.getAppsAPI()
                     .getSecrets(APP_KEY, true, APILocator.systemHost(), APILocator.systemUser());
-            if (secrets.isEmpty()) return null;
-
+            if (!secrets.isPresent()) {
+                return null;
+            }
             final AppSecrets s = secrets.get();
             return Map.of(
                     "lokiUrl",      getSecret(s, "lokiUrl"),
                     "lokiUsername", getSecret(s, "lokiUsername"),
                     "lokiPassword", getSecret(s, "lokiPassword")
             );
-        }).getOrElse((Map<String, String>) null);
+        } catch (final Exception e) {
+            Logger.warn(LokiShipperJob.class, "LokiShipperJob: could not load App config — " + e.getMessage());
+            return null;
+        }
     }
 
     private String getSecret(final AppSecrets secrets, final String key) {
-        return Try.of(() -> secrets.getSecrets().get(key).getString().trim())
-                .getOrElse("");
+        try {
+            final String value = secrets.getSecrets().get(key).getString();
+            return value != null ? value.trim() : "";
+        } catch (final Exception e) {
+            return "";
+        }
     }
 
     private String jsonEscape(final String input) {

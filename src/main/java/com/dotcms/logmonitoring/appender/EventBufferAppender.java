@@ -2,15 +2,9 @@ package com.dotcms.logmonitoring.appender;
 
 import com.dotcms.logmonitoring.buffer.EventBuffer;
 import com.dotcms.logmonitoring.interceptor.SiteContextInterceptor;
-import org.apache.logging.log4j.core.Appender;
-import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 
 import java.io.Serializable;
 
@@ -23,9 +17,8 @@ import java.io.Serializable;
  * site="system" since no interceptor runs for them.
  *
  * This appender is registered programmatically from the OSGi Activator —
- * no changes to log4j2.xml are required.
+ * no @Plugin annotations are used and no changes to log4j2.xml are required.
  */
-@Plugin(name = "EventBufferAppender", category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE)
 public class EventBufferAppender extends AbstractAppender {
 
     public static final String APPENDER_NAME = "EventBufferAppender";
@@ -34,17 +27,6 @@ public class EventBufferAppender extends AbstractAppender {
                                 final Filter filter,
                                 final Layout<? extends Serializable> layout) {
         super(name, filter, layout, true, null);
-    }
-
-    @PluginFactory
-    public static EventBufferAppender createAppender(
-            @PluginAttribute("name") final String name,
-            @PluginElement("Filter") final Filter filter,
-            @PluginElement("Layout") final Layout<? extends Serializable> layout) {
-        return new EventBufferAppender(
-                name != null ? name : APPENDER_NAME,
-                filter,
-                layout);
     }
 
     public static EventBufferAppender create() {

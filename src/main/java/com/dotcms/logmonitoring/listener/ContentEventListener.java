@@ -11,7 +11,6 @@ import com.dotmarketing.business.APILocator;
 import com.dotmarketing.portlets.contentlet.model.Contentlet;
 import com.dotmarketing.portlets.contentlet.model.ContentletListener;
 import com.dotmarketing.util.Logger;
-import io.vavr.control.Try;
 
 /**
  * Listens to dotCMS content lifecycle events (publish, unpublish, archive,
@@ -34,21 +33,21 @@ public class ContentEventListener implements ContentletListener<Contentlet> {
     @Subscriber
     public void onModified(final ContentletPublishEvent<Contentlet> event) {
         final String eventType = event.isPublish() ? "CONTENT_PUBLISH" : "CONTENT_UNPUBLISH";
-        captureContentEvent(event.getContentlet(), event.getUser() != null ? event.getUser().getUserId() : "system", eventType);
+        final String userId = resolveUserId(event);
+        captureContentEvent(event.getContentlet(), userId, eventType);
     }
 
     @Subscriber
     public void onPublish(final ContentletPublishEvent<Contentlet> event) {
-        // onModified covers both publish and unpublish states; this subscriber
-        // is required by the interface but delegates to onModified to avoid
-        // double-buffering the same event.
+        // onModified covers both publish and unpublish; this method is required
+        // by the framework but intentionally left empty to avoid double-capture.
     }
 
     @Override
     @Subscriber
     public void onArchive(final ContentletArchiveEvent<Contentlet> event) {
-        captureContentEvent(event.getContentlet(), "system",
-                event.isArchive() ? "CONTENT_ARCHIVE" : "CONTENT_UNARCHIVE");
+        final String eventType = event.isArchive() ? "CONTENT_ARCHIVE" : "CONTENT_UNARCHIVE";
+        captureContentEvent(event.getContentlet(), "system", eventType);
     }
 
     @Override
@@ -64,14 +63,9 @@ public class ContentEventListener implements ContentletListener<Contentlet> {
             return;
         }
 
-        final String siteName = Try.of(() -> {
-            final Host host = APILocator.getHostAPI()
-                    .find(contentlet.getHost(), APILocator.systemUser(), false);
-            return host != null ? host.getHostname() : "unknown";
-        }).getOrElse("unknown");
-
-        final String title = Try.of(contentlet::getTitle).getOrElse("unknown");
-        final String contentType = Try.of(() -> contentlet.getContentType().variable()).getOrElse("unknown");
+        final String siteName   = resolveSiteName(contentlet);
+        final String title      = resolveTitle(contentlet);
+        final String contentType = resolveContentType(contentlet);
 
         final String message = String.format("%s — title: '%s', contentType: %s, identifier: %s",
                 eventType, title, contentType, contentlet.getIdentifier());
@@ -88,5 +82,40 @@ public class ContentEventListener implements ContentletListener<Contentlet> {
 
         EventBuffer.getInstance().add(logEvent);
         Logger.debug(getClass(), "ContentEventListener captured: " + message);
+    }
+
+    private String resolveSiteName(final Contentlet contentlet) {
+        try {
+            final Host host = APILocator.getHostAPI()
+                    .find(contentlet.getHost(), APILocator.systemUser(), false);
+            return (host != null && host.getHostname() != null) ? host.getHostname() : "unknown";
+        } catch (final Exception e) {
+            Logger.debug(getClass(), "Could not resolve site for contentlet: " + e.getMessage());
+            return "unknown";
+        }
+    }
+
+    private String resolveTitle(final Contentlet contentlet) {
+        try {
+            return contentlet.getTitle();
+        } catch (final Exception e) {
+            return "unknown";
+        }
+    }
+
+    private String resolveContentType(final Contentlet contentlet) {
+        try {
+            return contentlet.getContentType().variable();
+        } catch (final Exception e) {
+            return "unknown";
+        }
+    }
+
+    private String resolveUserId(final ContentletPublishEvent<Contentlet> event) {
+        try {
+            return (event.getUser() != null) ? event.getUser().getUserId() : "system";
+        } catch (final Exception e) {
+            return "system";
+        }
     }
 }

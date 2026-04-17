@@ -44,6 +44,7 @@
                         <Bundle-DocURL>https://www.dotcms.com/</Bundle-DocURL>
                         <Bundle-Activator>com.dotcms.logmonitoring.Activator</Bundle-Activator>
                         <Import-Package>*</Import-Package>
+                        <DynamicImport-Package>*</DynamicImport-Package>
                     </instructions>
                 </configuration>
             </plugin>

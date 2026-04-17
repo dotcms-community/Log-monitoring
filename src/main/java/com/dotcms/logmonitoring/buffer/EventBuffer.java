@@ -56,6 +56,16 @@ public class EventBuffer {
         return events;
     }
 
+    /**
+     * Re-insert a list of events at the tail of the buffer (e.g. after a failed Loki push).
+     * Events that don't fit are dropped with a warning.
+     */
+    public void requeueAll(final List<LogEvent> events) {
+        for (final LogEvent event : events) {
+            add(event);
+        }
+    }
+
     public int size() {
         return buffer.size();
     }

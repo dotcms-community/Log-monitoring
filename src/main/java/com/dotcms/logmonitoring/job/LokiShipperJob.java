@@ -5,9 +5,6 @@ import com.dotcms.logmonitoring.model.LogEvent;
 import com.dotcms.security.apps.AppSecrets;
 import com.dotmarketing.business.APILocator;
 import com.dotmarketing.util.Logger;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
-import org.quartz.StatefulJob;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -42,14 +39,12 @@ import java.util.stream.Collectors;
  *   lokiUsername — Grafana Cloud org/user ID (used for Basic auth)
  *   lokiPassword — Grafana Cloud API key    (used for Basic auth, hidden in UI)
  */
-public class LokiShipperJob implements StatefulJob {
+public class LokiShipperJob implements Runnable {
 
-    public static final String JOB_NAME    = "LokiShipperJob";
-    public static final String JOB_GROUP   = "LogMonitoring";
-    public static final String APP_KEY     = "log-monitoring";
+    public static final String APP_KEY = "dot-log-monitoring";
 
     @Override
-    public void execute(final JobExecutionContext context) throws JobExecutionException {
+    public void run() {
         final Map<String, String> config = loadAppConfig();
         if (config == null || config.isEmpty()) {
             Logger.warn(LokiShipperJob.class,
@@ -84,12 +79,9 @@ public class LokiShipperJob implements StatefulJob {
             Logger.info(LokiShipperJob.class,
                     "LokiShipperJob: successfully shipped " + events.size() + " events.");
         } else {
-            // Re-queue all events so they are retried next cycle
             Logger.warn(LokiShipperJob.class,
                     "LokiShipperJob: Loki push failed — re-queuing " + events.size() + " events.");
-            for (final LogEvent e : events) {
-                EventBuffer.getInstance().add(e);
-            }
+            EventBuffer.getInstance().requeueAll(events);
         }
     }
 

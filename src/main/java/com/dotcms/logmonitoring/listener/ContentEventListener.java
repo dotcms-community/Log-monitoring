@@ -37,10 +37,9 @@ public class ContentEventListener implements ContentletListener<Contentlet> {
         captureContentEvent(event.getContentlet(), userId, eventType);
     }
 
-    @Subscriber
     public void onPublish(final ContentletPublishEvent<Contentlet> event) {
         // onModified covers both publish and unpublish; this method is required
-        // by the framework but intentionally left empty to avoid double-capture.
+        // by the interface but intentionally left empty to avoid double-capture.
     }
 
     @Override

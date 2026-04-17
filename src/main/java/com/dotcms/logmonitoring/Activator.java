@@ -11,14 +11,13 @@ import com.dotcms.system.event.local.business.LocalSystemEventsAPI;
 import com.dotmarketing.business.APILocator;
 import com.dotmarketing.filters.InterceptorFilter;
 import com.dotmarketing.osgi.GenericBundleActivator;
-import com.dotmarketing.quartz.CronScheduledTask;
 import com.dotmarketing.util.Config;
 import com.dotmarketing.util.Logger;
 import org.osgi.framework.BundleContext;
-import org.quartz.Trigger;
 
-import java.util.Date;
-import java.util.HashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * OSGi Bundle Activator for the Log Monitoring plugin.
@@ -27,29 +26,28 @@ import java.util.HashMap;
  *   1. Register SiteContextInterceptor (first in chain) — injects site/user into MDC.
  *   2. Register SiteContextCleanupInterceptor (last in chain) — clears MDC after request.
  *   3. Register EventBufferAppender with Log4j2 — captures all log output into buffer.
- *      This step is non-fatal: if the Log4j2 cast fails in this OSGi environment the
- *      plugin still starts and content events will still be captured and shipped.
- *   4. Subscribe ContentEventListener to dotCMS content lifecycle events.
- *   5. Schedule LokiShipperJob Quartz cron job.
+ *   4. Register App descriptor with dotCMS Apps framework.
+ *   5. Subscribe ContentEventListener to dotCMS content lifecycle events.
+ *   6. Schedule LokiShipperJob via ScheduledExecutorService.
  *
- * All steps are individually try-caught so a failure in one does not prevent the
- * remaining components from starting. Each failure is logged clearly so the stack
- * trace is visible in dotCMS.log for diagnosis.
+ * Scheduling uses ScheduledExecutorService rather than Quartz so the job runs
+ * inside the OSGi classloader and can access all bundle classes directly.
  *
- * Cron schedule: LOG_MONITOR_CRON property (default: every 10 minutes).
+ * Interval: LOG_MONITOR_INTERVAL_MINUTES property (default: 10).
  */
 public class Activator extends GenericBundleActivator {
 
-    private static final String DEFAULT_CRON = "0 */10 * * * ?";
+    private static final int DEFAULT_INTERVAL_MINUTES = 10;
 
     private final SiteContextInterceptor        siteInterceptor    = new SiteContextInterceptor();
     private final SiteContextCleanupInterceptor cleanupInterceptor = new SiteContextCleanupInterceptor();
     private final ContentEventListener          contentListener    = new ContentEventListener();
 
-    private WebInterceptorDelegate delegate;
-    private LocalSystemEventsAPI   localSystemEventsAPI;
-    private EventBufferAppender    appender;
-    private boolean                appenderRegistered = false;
+    private WebInterceptorDelegate   delegate;
+    private LocalSystemEventsAPI     localSystemEventsAPI;
+    private EventBufferAppender      appender;
+    private boolean                  appenderRegistered = false;
+    private ScheduledExecutorService scheduler;
 
     @Override
     public void start(final BundleContext context) throws Exception {
@@ -68,7 +66,7 @@ public class Activator extends GenericBundleActivator {
         } catch (final Exception e) {
             Logger.error(Activator.class,
                     "Log Monitoring Plugin: FAILED to register web interceptors — " + e.getMessage(), e);
-            throw e; // interceptors are core — rethrow so the error is visible
+            throw e;
         }
 
         // 2. Register Log4j2 appender (non-fatal — classloader issues are possible in OSGi)
@@ -96,7 +94,29 @@ public class Activator extends GenericBundleActivator {
                     e.getClass().getName() + ": " + e.getMessage());
         }
 
-        // 3. Subscribe to content lifecycle events
+        // 3. Register App descriptor (dot-log-monitoring.yml) with the Apps framework
+        try {
+            final java.net.URL yamlUrl = context.getBundle().getResource("dot-log-monitoring.yml");
+            if (yamlUrl == null) {
+                throw new IllegalStateException("dot-log-monitoring.yml not found in bundle resources");
+            }
+            final java.io.File tmpYaml = new java.io.File(
+                    System.getProperty("java.io.tmpdir"), "dot-log-monitoring.yml");
+            tmpYaml.deleteOnExit();
+            try (final java.io.InputStream in  = yamlUrl.openStream();
+                 final java.io.OutputStream out = new java.io.FileOutputStream(tmpYaml)) {
+                in.transferTo(out);
+            }
+            APILocator.getAppsAPI().createAppDescriptor(tmpYaml, APILocator.systemUser());
+            Logger.info(Activator.class, "Log Monitoring Plugin: App descriptor registered.");
+        } catch (final com.dotmarketing.exception.AlreadyExistException e) {
+            Logger.info(Activator.class, "Log Monitoring Plugin: App descriptor already registered — skipping.");
+        } catch (final Exception e) {
+            Logger.warn(Activator.class,
+                    "Log Monitoring Plugin: could not register App descriptor — " + e.getMessage());
+        }
+
+        // 4. Subscribe to content lifecycle events
         try {
             this.localSystemEventsAPI = APILocator.getLocalSystemEventsAPI();
             localSystemEventsAPI.subscribe(contentListener);
@@ -107,29 +127,13 @@ public class Activator extends GenericBundleActivator {
             throw e;
         }
 
-        // 4. Schedule Loki shipper cron job
-        try {
-            final String cronExpression = Config.getStringProperty("LOG_MONITOR_CRON", DEFAULT_CRON);
-
-            final CronScheduledTask shipperTask = new CronScheduledTask(
-                    LokiShipperJob.JOB_NAME,
-                    LokiShipperJob.JOB_GROUP,
-                    "Ships buffered log events to Loki",
-                    LokiShipperJob.class.getName(),
-                    new Date(),
-                    null,
-                    Trigger.MISFIRE_INSTRUCTION_SMART_POLICY,
-                    new HashMap<>(),
-                    cronExpression
-            );
-            scheduleQuartzJob(shipperTask);
-            Logger.info(Activator.class,
-                    "Log Monitoring Plugin: LokiShipperJob scheduled — cron: " + cronExpression);
-        } catch (final Exception e) {
-            Logger.error(Activator.class,
-                    "Log Monitoring Plugin: FAILED to schedule LokiShipperJob — " + e.getMessage(), e);
-            throw e;
-        }
+        // 5. Schedule Loki shipper via ScheduledExecutorService (avoids Quartz classloader issues)
+        final int intervalMinutes = Config.getIntProperty("LOG_MONITOR_INTERVAL_MINUTES", DEFAULT_INTERVAL_MINUTES);
+        scheduler = Executors.newSingleThreadScheduledExecutor(
+                r -> new Thread(r, "loki-shipper"));
+        scheduler.scheduleAtFixedRate(new LokiShipperJob(), 0, intervalMinutes, TimeUnit.MINUTES);
+        Logger.info(Activator.class,
+                "Log Monitoring Plugin: LokiShipperJob scheduled — interval: " + intervalMinutes + " minutes.");
 
         Logger.info(Activator.class, "Log Monitoring Plugin: started successfully.");
     }
@@ -137,6 +141,19 @@ public class Activator extends GenericBundleActivator {
     @Override
     public void stop(final BundleContext context) throws Exception {
         Logger.info(Activator.class, "Log Monitoring Plugin: stopping.");
+
+        // Shut down the shipper scheduler — allow any in-flight push up to 30s to complete
+        if (scheduler != null) {
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(30, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
+            } catch (final InterruptedException ie) {
+                scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
 
         // Remove web interceptors
         if (delegate != null) {
@@ -173,7 +190,15 @@ public class Activator extends GenericBundleActivator {
             }
         }
 
-        // Unregister Quartz job and all other OSGi services
+        // Remove App descriptor but preserve secrets so credentials survive redeploys
+        try {
+            APILocator.getAppsAPI().removeApp(
+                    LokiShipperJob.APP_KEY, APILocator.systemUser(), false);
+        } catch (final Exception e) {
+            Logger.warn(Activator.class, "Log Monitoring Plugin: error removing App descriptor — " + e.getMessage());
+        }
+
+        // Unregister OSGi services
         this.unregisterServices(context);
 
         Logger.info(Activator.class, "Log Monitoring Plugin: stopped.");

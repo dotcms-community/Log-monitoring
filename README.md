@@ -67,6 +67,7 @@ The plugin uses the dotCMS Apps framework to store credentials securely (encrypt
 | **Loki Push URL** | Full Loki push endpoint. For Grafana Cloud: `https://logs-prod-{region}.grafana.net/loki/api/v1/push` |
 | **Loki Username / Grafana Cloud Org ID** | Your numeric Grafana Cloud Org ID. Leave blank for unauthenticated Loki. |
 | **Loki API Key / Password** | Your Grafana Cloud API key. Stored encrypted. Leave blank for unauthenticated Loki. |
+| **Shipping Interval (minutes)** | How often to ship log events to Loki. Default: 10. Minimum: 1. Changes take effect after the current cycle completes — no redeploy needed. |
 
 5. Click **Save**
 
@@ -92,18 +93,11 @@ Or filter by site:
 
 ## Configuration
 
-### Cron schedule
+### Shipping interval
 
-The default shipping interval is every 10 minutes. To change it, set the following property in your dotCMS `dotmarketing-config.properties` or as an environment variable:
+The shipping interval is configured in **System → Apps → Log Monitoring** via the **Shipping Interval (minutes)** field. The default is 10 minutes and the minimum is 1.
 
-```
-LOG_MONITOR_CRON=0 */10 * * * ?
-```
-
-Examples:
-- Every 10 minutes: `0 */10 * * * ?`
-- Every hour: `0 0 * * * ?`
-- Every day at midnight: `0 0 0 * * ?`
+Changes take effect after the current cycle completes — no plugin redeploy or server restart required. The scheduler reads the interval from App config after each run and applies the new value to the next scheduled fire.
 
 ### Finding your Grafana Cloud Loki endpoint and credentials
 
@@ -132,8 +126,8 @@ dotCMS processes request
     ▼
 SiteContextCleanupInterceptor ── clears MDC after request
     │
-    ▼ (every 10 min)
-LokiShipperJob (Quartz)
+    ▼ (interval configured in System → Apps, default 10 min)
+LokiShipperJob (ScheduledExecutorService)
     │
     ├── drains EventBuffer
     ├── groups events by site
@@ -143,7 +137,7 @@ LokiShipperJob (Quartz)
 
 ## Known Limitations
 
-- **In-memory buffer only** — if the dotCMS process is killed (not gracefully stopped), buffered events that have not yet been shipped are lost. Under normal 10-minute intervals this window is small.
+- **In-memory buffer only** — if the dotCMS process is killed (not gracefully stopped), buffered events that have not yet been shipped are lost. The exposure window equals your configured shipping interval.
 - **Non-request threads** — background jobs, scheduled tasks, and push publishing operations are captured by the Log4j2 appender but are tagged `site=system` since no HTTP request context is available for them.
 - **Log4j2 reconfiguration** — if dotCMS reloads `log4j2.xml` at runtime, the programmatically registered appender will be removed. Reloading the plugin via Dynamic Plugins will re-register it.
 

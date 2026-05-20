@@ -37,8 +37,8 @@ Once events are in Loki, you can use **Grafana** to search them with LogQL, buil
 ## Building from Source
 
 ```bash
-git clone https://github.com/mboutillette-dotcms/Log-monitoring.git
-cd Log-monitoring
+git clone https://github.com/dotcms-community/plugin-log-monitoring.git
+cd plugin-log-monitoring
 mvn package
 ```
 
